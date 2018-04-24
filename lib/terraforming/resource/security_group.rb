@@ -81,6 +81,16 @@ module Terraforming
         end
       end
 
+      def ingress_name_of(security_group, index)
+        # should normalize index?
+        "#{module_name_of(security_group)}-ingress-#{index}"
+      end
+
+      def egress_name_of(security_group, index)
+        # should normalize index?
+        "#{module_name_of(security_group)}-egress-#{index}"
+      end
+
       def permission_attributes_of(security_group, permission, type)
         hashcode = permission_hashcode_of(security_group, permission)
         security_groups = security_groups_in(permission, security_group).reject do |identifier|
