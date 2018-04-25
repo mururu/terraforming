@@ -1,6 +1,6 @@
 module Terraforming
   module Resource
-    class SecurityGroup
+    class SecurityGroup2
       include Terraforming::Util
 
       def self.tf(client: Aws::EC2::Client.new)
@@ -16,7 +16,7 @@ module Terraforming
       end
 
       def tf
-        apply_template(@client, "tf/security_group")
+        apply_template(@client, "tf/security_group2")
       end
 
       def tfstate
@@ -79,6 +79,24 @@ module Terraforming
         else
           normalize_module_name("#{security_group.vpc_id}-#{security_group.group_name}")
         end
+      end
+
+      def ingress_name_of(security_group, index)
+        # should normalize index?
+        "#{module_name_of(security_group)}-ingress-#{index}"
+      end
+
+      def egress_name_of(security_group, index)
+        # should normalize index?
+        "#{module_name_of(security_group)}-egress-#{index}"
+      end
+
+      def module_id_reference_of(security_group)
+        "${aws_security_group.#{module_name_of(security_group)}.id}"
+      end
+
+      def lookup_security_group_by_group_id(security_group_id)
+        group_id_mapping[security_group_id]
       end
 
       def permission_attributes_of(security_group, permission, type)
@@ -159,7 +177,11 @@ module Terraforming
       end
 
       def security_groups
-        @client.describe_security_groups.map(&:security_groups).flatten
+        @__cached_security_group ||= @client.describe_security_groups.map(&:security_groups).flatten
+      end
+
+      def group_id_mapping
+        @__group_id_mapping ||= security_groups.map{|security_group| [security_group.group_id, security_group]}.to_h
       end
 
       def security_groups_in(permission, security_group)

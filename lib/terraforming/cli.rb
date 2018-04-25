@@ -195,6 +195,11 @@ module Terraforming
       execute(Terraforming::Resource::SecurityGroup, options)
     end
 
+    desc "sg2", "Security Group 2"
+    def sg2
+      execute(Terraforming::Resource::SecurityGroup2, options)
+    end
+
     desc "sn", "Subnet"
     def sn
       execute(Terraforming::Resource::Subnet, options)
