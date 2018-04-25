@@ -4,10 +4,11 @@ module Terraforming
       include Terraforming::Util
 
       def self.tf(client: Aws::EC2::Client.new, opts: {})
+        raise "sg2 require --vpc-id" unless opts[:vpc_id]
         if opts[:output_dir]
-          self.new(client).tf_to_file(opts[:output_dir])
+          self.new(client, opts[:vpc_id]).tf_to_file(opts[:output_dir])
         else
-          self.new(client).tf
+          self.new(client, opts[:vpc_id]).tf()
         end
       end
 
@@ -15,8 +16,9 @@ module Terraforming
         self.new(client).tfstate
       end
 
-      def initialize(client)
+      def initialize(client, vpc_id)
         @client = client
+        @vpc_id = vpc_id
       end
 
       def tf
@@ -94,11 +96,7 @@ module Terraforming
       end
 
       def module_name_of(security_group)
-        if security_group.vpc_id.nil?
-          normalize_module_name(security_group.group_name.to_s)
-        else
-          normalize_module_name("#{security_group.vpc_id}-#{security_group.group_name}")
-        end
+        normalize_module_name(security_group.group_name.to_s)
       end
 
       def ingress_name_of(security_group, index)
@@ -197,7 +195,7 @@ module Terraforming
       end
 
       def security_groups
-        @__cached_security_group ||= @client.describe_security_groups.map(&:security_groups).flatten
+        @__cached_security_group ||= @client.describe_security_groups.map(&:security_groups).flatten.select{|security_group| security_group.vpc_id == @vpc_id }
       end
 
       def group_id_mapping

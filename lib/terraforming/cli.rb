@@ -10,6 +10,7 @@ module Terraforming
                  type: :boolean,
                  desc: "Use the bundled CA certificate from AWS SDK"
     class_option :output_dir, type: :string, desc: "Directory to put files"
+    class_option :vpc_id, type: :string, desc: "VPC ID"
 
     desc "alb", "ALB"
     def alb

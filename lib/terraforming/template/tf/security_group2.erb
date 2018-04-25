@@ -2,7 +2,7 @@
 resource "aws_security_group" "<%= module_name_of(security_group) %>" {
   name        = "<%= security_group.group_name %>"
   description = "<%= security_group.description %>"
-  vpc_id      = "<%= security_group.vpc_id || '' %>"
+  vpc_id      = "${var.vpc_id}"
 <% if security_group.tags.length > 0 -%>
 <%- max_length = security_group.tags.map{|tag| tag.key.length }.max -%>
 
