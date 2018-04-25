@@ -3,8 +3,12 @@ module Terraforming
     class SecurityGroup2
       include Terraforming::Util
 
-      def self.tf(client: Aws::EC2::Client.new)
-        self.new(client).tf
+      def self.tf(client: Aws::EC2::Client.new, opts: {})
+        if opts[:output_dir]
+          self.new(client).tf_to_file(opts[:output_dir])
+        else
+          self.new(client).tf
+        end
       end
 
       def self.tfstate(client: Aws::EC2::Client.new)
@@ -17,6 +21,22 @@ module Terraforming
 
       def tf
         apply_template(@client, "tf/security_group2")
+      end
+
+      def tf_to_file(dir)
+        raise "#{dir} is missing" unless Dir.exist?(dir)
+
+        results = security_groups.map do |security_group|
+          define_singleton_method(:security_group) { security_group }
+          [security_group.group_name, apply_template(@client, "tf/security_group2_separated")]
+        end
+        results.each do |name, result|
+          File.open(File.join(dir, "#{name}.tf"), 'w') do |f|
+            f.write result
+          end
+        end
+
+        results.map{|_, result| result }.join("\n")
       end
 
       def tfstate

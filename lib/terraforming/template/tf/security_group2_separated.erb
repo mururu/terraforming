@@ -1,0 +1,109 @@
+resource "aws_security_group" "<%= module_name_of(security_group) %>" {
+  name        = "<%= security_group.group_name %>"
+  description = "<%= security_group.description %>"
+  vpc_id      = "<%= security_group.vpc_id || '' %>"
+<% if security_group.tags.length > 0 -%>
+<%- max_length = security_group.tags.map{|tag| tag.key.length }.max -%>
+
+  tags {
+<% security_group.tags.each do |tag| -%>
+    "<%= tag.key %>"<%= ' ' * (max_length - tag.key.length) %> = "<%= tag.value %>"
+<% end -%>
+  }
+<% end -%>
+}
+
+<%- index = 0 -%>
+<% dedup_permissions(security_group.ip_permissions, security_group.group_id).each do |permission| -%>
+<%- if permission.user_id_group_pairs.length > 0 && self_referenced_permission?(security_group, permission) -%>
+resource "aws_security_group_rule" "<%= ingress_name_of(security_group, index) %>" {
+  security_group_id = "<%= module_id_reference_of(security_group) %>"
+  type              = "ingress"
+  from_port         = <%= permission.from_port || 0 %>
+  to_port           = <%= permission.to_port || 0 %>
+  protocol          = "<%= permission.ip_protocol %>"
+<%- if permission.prefix_list_ids.length > 0 -%>
+  prefix_list_ids   = <%= permission.prefix_list_ids.map { |range| range.prefix_list_id }.inspect %>
+<%- end -%>
+  self              = true
+}
+
+<%- index += 1 -%>
+<%- end -%>
+<% security_groups_in(permission, security_group).reject { |group_name| group_name == security_group.group_name }.reject { |group_id| group_id == security_group.group_id }.each do |source_security_group| -%>
+resource "aws_security_group_rule" "<%= ingress_name_of(security_group, index) %>" {
+  security_group_id        = "<%= module_id_reference_of(security_group) %>"
+  type                     = "ingress"
+  from_port                = <%= permission.from_port || 0 %>
+  to_port                  = <%= permission.to_port || 0 %>
+  protocol                 = "<%= permission.ip_protocol %>"
+<%- if permission.prefix_list_ids.length > 0 -%>
+  prefix_list_ids          = <%= permission.prefix_list_ids.map { |range| range.prefix_list_id }.inspect %>
+<%- end -%>
+  source_security_group_id = "<%= module_id_reference_of(lookup_security_group_by_group_id(source_security_group)) %>"
+}
+
+<%- index += 1 -%>
+<%- end -%>
+<%- if permission.ip_ranges.length > 0 -%>
+resource "aws_security_group_rule" "<%= ingress_name_of(security_group, index) %>" {
+  security_group_id = "<%= module_id_reference_of(security_group) %>"
+  type              = "ingress"
+  from_port         = <%= permission.from_port || 0 %>
+  to_port           = <%= permission.to_port || 0 %>
+  protocol          = "<%= permission.ip_protocol %>"
+<%- if permission.prefix_list_ids.length > 0 -%>
+  prefix_list_ids   = <%= permission.prefix_list_ids.map { |range| range.prefix_list_id }.inspect %>
+<%- end -%>
+  cidr_blocks       = <%= permission.ip_ranges.map { |range| range.cidr_ip }.inspect %>
+}
+<%- index += 1 %>
+<%- end -%>
+<%- end -%>
+<%- index = 0 -%>
+<% dedup_permissions(security_group.ip_permissions_egress, security_group.group_id).each do |permission| -%>
+<%- if permission.user_id_group_pairs.length > 0 && self_referenced_permission?(security_group, permission) -%>
+resource "aws_security_group_rule" "<%= egress_name_of(security_group, index) %>" {
+  security_group_id = "<%= module_id_reference_of(security_group) %>"
+  type              = "egress"
+  from_port         = <%= permission.from_port || 0 %>
+  to_port           = <%= permission.to_port || 0 %>
+  protocol          = "<%= permission.ip_protocol %>"
+<%- if permission.prefix_list_ids.length > 0 -%>
+  prefix_list_ids   = <%= permission.prefix_list_ids.map { |range| range.prefix_list_id }.inspect %>
+<%- end -%>
+  self              = true
+}
+
+<%- index += 1 -%>
+<%- end -%>
+<% security_groups_in(permission, security_group).reject { |group_id| group_id == security_group.group_id }.each do |source_security_group| -%>
+resource "aws_security_group_rule" "<%= egress_name_of(security_group, index) %>" {
+  security_group_id        = "<%= module_id_reference_of(security_group) %>"
+  type                     = "egress"
+  from_port                = <%= permission.from_port || 0 %>
+  to_port                  = <%= permission.to_port || 0 %>
+  protocol                 = "<%= permission.ip_protocol %>"
+<%- if permission.prefix_list_ids.length > 0 -%>
+  prefix_list_ids          = <%= permission.prefix_list_ids.map { |range| range.prefix_list_id }.inspect %>
+<%- end -%>
+  source_security_group_id = "<%= module_id_reference_of(lookup_security_group_by_group_id(source_security_group)) %>"
+}
+
+<%- index += 1 -%>
+<%- end -%>
+<%- if permission.ip_ranges.length > 0 -%>
+resource "aws_security_group_rule" "<%= egress_name_of(security_group, index) %>" {
+  security_group_id = "<%= module_id_reference_of(security_group) %>"
+  type              = "egress"
+  from_port         = <%= permission.from_port || 0 %>
+  to_port           = <%= permission.to_port || 0 %>
+  protocol          = "<%= permission.ip_protocol %>"
+<%- if permission.prefix_list_ids.length > 0 -%>
+  prefix_list_ids   = <%= permission.prefix_list_ids.map { |range| range.prefix_list_id }.inspect %>
+<%- end -%>
+  cidr_blocks       = <%= permission.ip_ranges.map { |range| range.cidr_ip }.inspect %>
+}
+<%- index += 1 %>
+<%- end -%>
+<%- end -%>

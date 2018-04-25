@@ -9,6 +9,7 @@ module Terraforming
     class_option :use_bundled_cert,
                  type: :boolean,
                  desc: "Use the bundled CA certificate from AWS SDK"
+    class_option :output_dir, type: :string, desc: "Directory to put files"
 
     desc "alb", "ALB"
     def alb
@@ -247,7 +248,12 @@ module Terraforming
 
     def execute(klass, options)
       configure_aws(options)
-      result = options[:tfstate] ? tfstate(klass, options[:merge]) : tf(klass)
+      result =
+        if options[:tfstate]
+          tfstate(klass, options[:merge])
+        else
+          tf(klass, options)
+        end
 
       if options[:tfstate] && options[:merge] && options[:overwrite]
         open(options[:merge], "w+") do |f|
@@ -259,8 +265,12 @@ module Terraforming
       end
     end
 
-    def tf(klass)
-      klass.tf
+    def tf(klass, options)
+      if klass.method(:tf).parameters.include?([:key, :opts])
+        klass.tf(opts: options)
+      else
+        klass.tf
+      end
     end
 
     def tfstate(klass, tfstate_path)
