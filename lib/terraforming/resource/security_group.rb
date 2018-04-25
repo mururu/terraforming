@@ -95,6 +95,10 @@ module Terraforming
         "${aws_security_group.#{module_name_of(security_group)}.id}"
       end
 
+      def lookup_security_group_by_group_id(security_group_id)
+        group_id_mapping[security_group_id]
+      end
+
       def permission_attributes_of(security_group, permission, type)
         hashcode = permission_hashcode_of(security_group, permission)
         security_groups = security_groups_in(permission, security_group).reject do |identifier|
@@ -173,7 +177,11 @@ module Terraforming
       end
 
       def security_groups
-        @client.describe_security_groups.map(&:security_groups).flatten
+        @__cached_security_group ||= @client.describe_security_groups.map(&:security_groups).flatten
+      end
+
+      def group_id_mapping
+        @__group_id_mapping ||= security_groups.map{|security_group| [security_group.group_id, security_group]}.to_h
       end
 
       def security_groups_in(permission, security_group)
