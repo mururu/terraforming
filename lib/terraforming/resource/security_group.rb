@@ -91,6 +91,10 @@ module Terraforming
         "#{module_name_of(security_group)}-egress-#{index}"
       end
 
+      def module_id_reference_of(security_group)
+        "${aws_security_group.#{module_name_of(security_group)}.id}"
+      end
+
       def permission_attributes_of(security_group, permission, type)
         hashcode = permission_hashcode_of(security_group, permission)
         security_groups = security_groups_in(permission, security_group).reject do |identifier|
