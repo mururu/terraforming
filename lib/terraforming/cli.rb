@@ -107,6 +107,11 @@ module Terraforming
       execute(Terraforming::Resource::IAMRole, options)
     end
 
+    desc "iamr2", "IAM Role 2"
+    def iamr2
+      execute(Terraforming::Resource::IAMRole2, options)
+    end
+
     desc "iamrp", "IAM Role Policy"
     def iamrp
       execute(Terraforming::Resource::IAMRolePolicy, options)
