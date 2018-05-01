@@ -97,6 +97,11 @@ module Terraforming
       execute(Terraforming::Resource::IAMPolicy, options)
     end
 
+    desc "iamp", "IAM Policy 2"
+    def iamp2
+      execute(Terraforming::Resource::IAMPolicy2, options)
+    end
+
     desc "iampa", "IAM Policy Attachment"
     def iampa
       execute(Terraforming::Resource::IAMPolicyAttachment, options)
