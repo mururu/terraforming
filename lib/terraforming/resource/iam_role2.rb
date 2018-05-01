@@ -3,8 +3,12 @@ module Terraforming
     class IAMRole2
       include Terraforming::Util
 
-      def self.tf(client: Aws::IAM::Client.new)
-        self.new(client).tf
+      def self.tf(client: Aws::IAM::Client.new, opts: {})
+        if opts[:output_dir]
+          self.new(client).tf_to_file(opts[:output_dir])
+        else
+          self.new(client).tf
+        end
       end
 
       def self.tfstate(client: Aws::IAM::Client.new)
@@ -17,6 +21,22 @@ module Terraforming
 
       def tf
         apply_template(@client, "tf/iam_role2")
+      end
+
+      def tf_to_file(dir)
+        raise "#{dir} is missing" unless Dir.exist?(dir)
+
+        results = iam_roles.map do |role|
+          define_singleton_method(:role) { role }
+          [role.role_name, apply_template(@client, "tf/iam_role2_separated")]
+        end
+        results.each do |name, result|
+          File.open(File.join(dir, "#{name}.tf"), 'w') do |f|
+            f.write result
+          end
+        end
+
+        results.map{|_, result| result }.join("\n")
       end
 
       def tfstate
