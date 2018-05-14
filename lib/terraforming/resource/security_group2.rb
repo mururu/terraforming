@@ -241,13 +241,25 @@ module Terraforming
 
       # need sto return an hash of security group rules
       def process_egress_rules(security_group)
-        {}
+        process_rules(security_group, 'egress')
       end
 
       def process_ingress_rules(security_group)
-        # get the ingress rules of the security group (dotted hash format)
-        dotted_rules = ingress_attributes_of(security_group)
-        return unless dotted_rules
+        process_rules(security_group, 'ingress')
+      end
+
+      def process_rules(security_group, rule_type)
+        # get the appropriate rules of the security group (dotted hash format)
+        dotted_rules = case rule_type
+          when 'egress'
+            dotted_rules = egress_attributes_of(security_group)
+          when 'ingress'
+            dotted_rules = ingress_attributes_of(security_group)
+          else
+            raise "invalid rule_type: #{rule_type}. Valid values are: ingress, egress"
+        end
+
+        return {} unless dotted_rules
 
         # convert dotted hash to a next hash
         nested_rules = dotted_path_to_hash(dotted_rules)
@@ -255,7 +267,7 @@ module Terraforming
         # loop over each rule and create new resources
         # note: if a rule has multiple security groups then multiple resources will be generated
         resources = {}
-        nested_rules['ingress'].each do |rule_id, rule|
+        nested_rules[rule_type].each do |rule_id, rule|
 
           # skip the rule count
           next if rule_id == '#'
@@ -283,7 +295,12 @@ module Terraforming
           
           rule_count = 0
           sg_resource_name = "aws_security_group.#{module_name_of(security_group)}"
-          rule_resource_name = "aws_security_group_rule.#{ingress_name_of(security_group, rule_count)}"
+          rule_resource_name = case rule_type
+            when 'egress'
+              "aws_security_group_rule.#{egress_name_of(security_group, rule_count)}"
+            when 'ingress'
+              "aws_security_group_rule.#{ingress_name_of(security_group, rule_count)}"
+          end
           # handle security groups
           if rule['security_groups'].delete('#') != '0'
             rule['security_groups'].each do |key, source_sg_id|
