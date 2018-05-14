@@ -12,8 +12,9 @@ module Terraforming
         end
       end
 
-      def self.tfstate(client: Aws::EC2::Client.new)
-        self.new(client).tfstate
+      def self.tfstate(client: Aws::EC2::Client.new, opts: {})
+        raise "sg2 require --vpc-id" unless opts[:vpc_id]
+        self.new(client, opts[:vpc_id]).tfstate()
       end
 
       def initialize(client, vpc_id)

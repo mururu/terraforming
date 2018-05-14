@@ -261,7 +261,7 @@ module Terraforming
       configure_aws(options)
       result =
         if options[:tfstate]
-          tfstate(klass, options[:merge])
+          tfstate(klass, options[:merge], options[:vpc_id])
         else
           tf(klass, options)
         end
@@ -284,10 +284,10 @@ module Terraforming
       end
     end
 
-    def tfstate(klass, tfstate_path)
+    def tfstate(klass, tfstate_path, vpc_id)
       tfstate = tfstate_path ? MultiJson.load(open(tfstate_path).read) : tfstate_skeleton
       tfstate["serial"] = tfstate["serial"] + 1
-      tfstate["modules"][0]["resources"] = tfstate["modules"][0]["resources"].merge(klass.tfstate)
+      tfstate["modules"][0]["resources"] = tfstate["modules"][0]["resources"].merge(klass.tfstate(opts: {vpc_id: vpc_id} ))
       MultiJson.encode(tfstate, pretty: true)
     end
 
