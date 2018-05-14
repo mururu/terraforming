@@ -1,3 +1,5 @@
+require 'json'
+
 module Terraforming
   module Resource
     class SecurityGroup2
@@ -66,6 +68,15 @@ module Terraforming
               "attributes" => attributes
             }
           }
+
+          if separate_sg_rules
+            # write separate security group rule resources
+            # Note that for each rule, each source security group will require
+            # a separate aws_security_group_rule resource
+            resources.merge!(process_egress_rules(security_group))
+            resources.merge!(process_ingress_rules(security_group))
+          end
+
 
           resources
         end
@@ -227,6 +238,127 @@ module Terraforming
         tags.each { |tag| attributes["tags.#{tag.key}"] = tag.value }
         attributes
       end
+
+      # need sto return an hash of security group rules
+      def process_egress_rules(security_group)
+        {}
+      end
+
+      def process_ingress_rules(security_group)
+        # get the ingress rules of the security group (dotted hash format)
+        dotted_rules = ingress_attributes_of(security_group)
+        return unless dotted_rules
+
+        # convert dotted hash to a next hash
+        nested_rules = dotted_path_to_hash(dotted_rules)
+
+        # loop over each rule and create new resources
+        # note: if a rule has multiple security groups then multiple resources will be generated
+        resources = {}
+        nested_rules['ingress'].each do |rule_id, rule|
+
+          # skip the rule count
+          next if rule_id == '#'
+
+          # initialise the rule attributes
+          attributes = {
+            'security_group_id': security_group.group_id
+          }
+
+          # handle all the simnple parameters
+          ['from_port', 'to_port', 'protocol', 'self', 'type', 'protocol'].each do |param|
+            if rule.key?(param)
+              attributes[param] = rule[param]
+            end
+          end
+
+          # handle parameters that may have multiple values
+          ['cidr_blocks', 'prefix_list_ids'].each do |param|
+            if rule[param]['#'] != '0'
+              rule[param].each do |key, value|
+                attributes["#{param}.#{key}"] = value
+              end
+            end
+          end
+          
+          rule_count = 0
+          sg_resource_name = "aws_security_group.#{module_name_of(security_group)}"
+          rule_resource_name = "aws_security_group_rule.#{ingress_name_of(security_group, rule_count)}"
+          # handle security groups
+          if rule['security_groups'].delete('#') != '0'
+            rule['security_groups'].each do |key, source_sg_id|
+              sg_rule_id = "sgrule-#{key}"
+              sg_attributes = attributes
+              sg_attributes['source_security_group_id'] = source_sg_id
+              sg_attributes['id'] = sg_rule_id
+
+              resources[rule_resource_name] = {
+                'type': 'aws_security_group_rule',
+                'depends_on': [
+                  sg_resource_name
+                ],
+                'primary': {
+                  'id': sg_rule_id,
+                  'attributes': sg_attributes
+                }
+              }
+              rule_count += 1
+            end
+          else
+            sg_rule_id = "sg_rule-#{rule_id}"
+            resources[rule_resource_name] = {
+              'type': 'aws_security_group_rule',
+              'depends_on': [
+                sg_resource_name
+              ],
+              'primary': {
+                'id': sg_rule_id,
+                'attributes': attributes
+              }
+            }
+          end
+        end
+        resources
+      end
+
+      def dotted_path_to_hash(hash)
+
+        new_hash = {}
+
+          hash.each do |key, value|
+            h = new_hash
+
+            parts = key.to_s.split('.')
+            while parts.length > 0
+              new_key = parts[0]
+              rest = parts[1..-1]
+
+              if not h.instance_of? Hash
+                raise ArgumentError, "Trying to set key #{new_key} to value #{value} on a non hash #{h}\n"
+              end
+
+              if rest.length == 0
+                if h[new_key].instance_of? Hash
+                  raise ArgumentError, "Replacing a hash with a scalar. key #{new_key}, value #{value}, current value #{h[new_key]}\n"
+                end
+
+                h.store(new_key, value)
+                break
+              end
+
+              if h[new_key].nil?
+                h[new_key] = {}
+              end
+
+              h = h[new_key]
+              parts = rest
+            end
+          end
+
+        new_hash
+
+      end
+
     end
   end
 end
