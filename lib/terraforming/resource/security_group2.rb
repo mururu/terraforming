@@ -14,7 +14,7 @@ module Terraforming
 
       def self.tfstate(client: Aws::EC2::Client.new, opts: {})
         raise "sg2 require --vpc-id" unless opts[:vpc_id]
-        self.new(client, opts[:vpc_id]).tfstate()
+        self.new(client, opts[:vpc_id]).tfstate(opts[:separate_sg_rules])
       end
 
       def initialize(client, vpc_id)
@@ -42,7 +42,7 @@ module Terraforming
         results.map{|_, result| result }.join("\n")
       end
 
-      def tfstate
+      def tfstate(separate_sg_rules)
         security_groups.inject({}) do |resources, security_group|
           attributes = {
             "description" => security_group.description,
@@ -53,8 +53,11 @@ module Terraforming
           }
 
           attributes.merge!(tags_attributes_of(security_group))
-          attributes.merge!(egress_attributes_of(security_group))
-          attributes.merge!(ingress_attributes_of(security_group))
+
+          unless separate_sg_rules
+            attributes.merge!(egress_attributes_of(security_group))
+            attributes.merge!(ingress_attributes_of(security_group))
+          end
 
           resources["aws_security_group.#{module_name_of(security_group)}"] = {
             "type" => "aws_security_group",
