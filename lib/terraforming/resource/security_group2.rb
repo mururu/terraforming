@@ -274,11 +274,12 @@ module Terraforming
 
           # initialise the rule attributes
           common_attributes = {
-            'security_group_id': security_group.group_id
+            'security_group_id': security_group.group_id,
+            'type': rule_type
           }
 
           # handle all the simnple parameters
-          ['from_port', 'to_port', 'protocol', 'self', 'type', 'protocol'].each do |param|
+          ['from_port', 'to_port', 'protocol', 'self', 'protocol'].each do |param|
             if rule.key?(param)
               common_attributes[param] = rule[param]
             end
