@@ -69,6 +69,7 @@ module Terraforming
             }
           }
 
+          # add here separately so rules appear after group when listed
           if separate_sg_rules
             # write separate security group rule resources
             # Note that for each rule, each source security group will require
