@@ -273,14 +273,14 @@ module Terraforming
           next if rule_id == '#'
 
           # initialise the rule attributes
-          attributes = {
+          common_attributes = {
             'security_group_id': security_group.group_id
           }
 
           # handle all the simnple parameters
           ['from_port', 'to_port', 'protocol', 'self', 'type', 'protocol'].each do |param|
             if rule.key?(param)
-              attributes[param] = rule[param]
+              common_attributes[param] = rule[param]
             end
           end
 
@@ -288,54 +288,62 @@ module Terraforming
           ['cidr_blocks', 'prefix_list_ids'].each do |param|
             if rule[param]['#'] != '0'
               rule[param].each do |key, value|
-                attributes["#{param}.#{key}"] = value
+                common_attributes["#{param}.#{key}"] = value
               end
             end
           end
           
           rule_count = 0
           sg_resource_name = "aws_security_group.#{module_name_of(security_group)}"
-          rule_resource_name = case rule_type
-            when 'egress'
-              "aws_security_group_rule.#{egress_name_of(security_group, rule_count)}"
-            when 'ingress'
-              "aws_security_group_rule.#{ingress_name_of(security_group, rule_count)}"
-          end
           # handle security groups
           if rule['security_groups'].delete('#') != '0'
             rule['security_groups'].each do |key, source_sg_id|
               sg_rule_id = "sgrule-#{key}"
-              sg_attributes = attributes
-              sg_attributes['source_security_group_id'] = source_sg_id
-              sg_attributes['id'] = sg_rule_id
+              extra_attributes = {
+                'source_security_group_id': source_sg_id,
+                'id': sg_rule_id
+              }
 
-              resources[rule_resource_name] = {
+              resources[rule_resource_name(security_group, rule_type, rule_count)] = {
                 'type': 'aws_security_group_rule',
                 'depends_on': [
                   sg_resource_name
                 ],
                 'primary': {
                   'id': sg_rule_id,
-                  'attributes': sg_attributes
+                  'attributes': common_attributes.merge(extra_attributes)
                 }
               }
               rule_count += 1
             end
           else
-            sg_rule_id = "sg_rule-#{rule_id}"
-            resources[rule_resource_name] = {
+            sg_rule_id = "sgrule-#{rule_id}"
+            extra_attributes = {
+              'id': sg_rule_id
+            }
+
+            resources[rule_resource_name(security_group, rule_type, rule_count)] = {
               'type': 'aws_security_group_rule',
               'depends_on': [
                 sg_resource_name
               ],
               'primary': {
                 'id': sg_rule_id,
-                'attributes': attributes
+                'attributes': common_attributes.merge(extra_attributes)
               }
             }
           end
         end
         resources
+      end
+
+      def rule_resource_name(security_group, rule_type, rule_count)
+        case rule_type
+          when 'egress'
+            "aws_security_group_rule.#{egress_name_of(security_group, rule_count)}"
+          when 'ingress'
+            "aws_security_group_rule.#{ingress_name_of(security_group, rule_count)}"
+        end
       end
 
       def dotted_path_to_hash(hash)
