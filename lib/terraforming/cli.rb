@@ -11,6 +11,9 @@ module Terraforming
                  desc: "Use the bundled CA certificate from AWS SDK"
     class_option :output_dir, type: :string, desc: "Directory to put files"
     class_option :vpc_id, type: :string, desc: "VPC ID"
+    class_option :separate_sg_rules,
+                 type: :boolean,
+                 desc: "Generate separate aws_security_group_rules resources"
 
     desc "alb", "ALB"
     def alb
@@ -261,7 +264,7 @@ module Terraforming
       configure_aws(options)
       result =
         if options[:tfstate]
-          tfstate(klass, options[:merge])
+          tfstate(klass, options)
         else
           tf(klass, options)
         end
@@ -284,10 +287,10 @@ module Terraforming
       end
     end
 
-    def tfstate(klass, tfstate_path)
-      tfstate = tfstate_path ? MultiJson.load(open(tfstate_path).read) : tfstate_skeleton
+    def tfstate(klass, options)
+      tfstate = options[:merge] ? MultiJson.load(open(options[:merge]).read) : tfstate_skeleton
       tfstate["serial"] = tfstate["serial"] + 1
-      tfstate["modules"][0]["resources"] = tfstate["modules"][0]["resources"].merge(klass.tfstate)
+      tfstate["modules"][0]["resources"] = tfstate["modules"][0]["resources"].merge(klass.tfstate(opts: options))
       MultiJson.encode(tfstate, pretty: true)
     end
 

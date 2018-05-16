@@ -1,3 +1,5 @@
+require 'json'
+
 module Terraforming
   module Resource
     class SecurityGroup2
@@ -12,8 +14,9 @@ module Terraforming
         end
       end
 
-      def self.tfstate(client: Aws::EC2::Client.new)
-        self.new(client).tfstate
+      def self.tfstate(client: Aws::EC2::Client.new, opts: {})
+        raise "sg2 require --vpc-id" unless opts[:vpc_id]
+        self.new(client, opts[:vpc_id]).tfstate(opts[:separate_sg_rules])
       end
 
       def initialize(client, vpc_id)
@@ -41,7 +44,7 @@ module Terraforming
         results.map{|_, result| result }.join("\n")
       end
 
-      def tfstate
+      def tfstate(separate_sg_rules)
         security_groups.inject({}) do |resources, security_group|
           attributes = {
             "description" => security_group.description,
@@ -52,8 +55,11 @@ module Terraforming
           }
 
           attributes.merge!(tags_attributes_of(security_group))
-          attributes.merge!(egress_attributes_of(security_group))
-          attributes.merge!(ingress_attributes_of(security_group))
+
+          unless separate_sg_rules
+            attributes.merge!(egress_attributes_of(security_group))
+            attributes.merge!(ingress_attributes_of(security_group))
+          end
 
           resources["aws_security_group.#{module_name_of(security_group)}"] = {
             "type" => "aws_security_group",
@@ -62,6 +68,16 @@ module Terraforming
               "attributes" => attributes
             }
           }
+
+          # add here separately so rules appear after group when listed
+          if separate_sg_rules
+            # write separate security group rule resources
+            # Note that for each rule, each source security group will require
+            # a separate aws_security_group_rule resource
+            resources.merge!(process_egress_rules(security_group))
+            resources.merge!(process_ingress_rules(security_group))
+          end
+
 
           resources
         end
@@ -223,6 +239,153 @@ module Terraforming
         tags.each { |tag| attributes["tags.#{tag.key}"] = tag.value }
         attributes
       end
+
+      # need sto return an hash of security group rules
+      def process_egress_rules(security_group)
+        process_rules(security_group, 'egress')
+      end
+
+      def process_ingress_rules(security_group)
+        process_rules(security_group, 'ingress')
+      end
+
+      def process_rules(security_group, rule_type)
+        # get the appropriate rules of the security group (dotted hash format)
+        dotted_rules = case rule_type
+          when 'egress'
+            dotted_rules = egress_attributes_of(security_group)
+          when 'ingress'
+            dotted_rules = ingress_attributes_of(security_group)
+          else
+            raise "invalid rule_type: #{rule_type}. Valid values are: ingress, egress"
+        end
+
+        return {} unless dotted_rules
+
+        # convert dotted hash to a next hash
+        nested_rules = dotted_path_to_hash(dotted_rules)
+
+        # loop over each rule and create new resources
+        # note: if a rule has multiple security groups then multiple resources will be generated
+        resources = {}
+        nested_rules[rule_type].each do |rule_id, rule|
+
+          # skip the rule count
+          next if rule_id == '#'
+
+          # initialise the rule attributes
+          common_attributes = {
+            'security_group_id': security_group.group_id,
+            'type': rule_type
+          }
+
+          # handle all the simnple parameters
+          ['from_port', 'to_port', 'protocol', 'self', 'protocol'].each do |param|
+            if rule.key?(param)
+              common_attributes[param] = rule[param]
+            end
+          end
+
+          # handle parameters that may have multiple values
+          ['cidr_blocks', 'prefix_list_ids'].each do |param|
+            if rule[param]['#'] != '0'
+              rule[param].each do |key, value|
+                common_attributes["#{param}.#{key}"] = value
+              end
+            end
+          end
+          
+          rule_count = 0
+          sg_resource_name = "aws_security_group.#{module_name_of(security_group)}"
+          # handle security groups
+          if rule['security_groups'].delete('#') != '0'
+            rule['security_groups'].each do |key, source_sg_id|
+              sg_rule_id = "sgrule-#{key}"
+              extra_attributes = {
+                'source_security_group_id': source_sg_id,
+                'id': sg_rule_id
+              }
+
+              resources[rule_resource_name(security_group, rule_type, rule_count)] = {
+                'type': 'aws_security_group_rule',
+                'depends_on': [
+                  sg_resource_name
+                ],
+                'primary': {
+                  'id': sg_rule_id,
+                  'attributes': common_attributes.merge(extra_attributes)
+                }
+              }
+              rule_count += 1
+            end
+          else
+            sg_rule_id = "sgrule-#{rule_id}"
+            extra_attributes = {
+              'id': sg_rule_id
+            }
+
+            resources[rule_resource_name(security_group, rule_type, rule_count)] = {
+              'type': 'aws_security_group_rule',
+              'depends_on': [
+                sg_resource_name
+              ],
+              'primary': {
+                'id': sg_rule_id,
+                'attributes': common_attributes.merge(extra_attributes)
+              }
+            }
+          end
+        end
+        resources
+      end
+
+      def rule_resource_name(security_group, rule_type, rule_count)
+        case rule_type
+          when 'egress'
+            "aws_security_group_rule.#{egress_name_of(security_group, rule_count)}"
+          when 'ingress'
+            "aws_security_group_rule.#{ingress_name_of(security_group, rule_count)}"
+        end
+      end
+
+      def dotted_path_to_hash(hash)
+
+        new_hash = {}
+
+        hash.each do |key, value|
+          h = new_hash
+
+          parts = key.to_s.split('.')
+          while parts.length > 0
+            new_key = parts[0]
+            rest = parts[1..-1]
+
+            if not h.instance_of? Hash
+              raise ArgumentError, "Trying to set key #{new_key} to value #{value} on a non hash #{h}\n"
+            end
+
+            if rest.length == 0
+              if h[new_key].instance_of? Hash
+                raise ArgumentError, "Replacing a hash with a scalar. key #{new_key}, value #{value}, current value #{h[new_key]}\n"
+              end
+
+              h.store(new_key, value)
+              break
+            end
+
+            if h[new_key].nil?
+              h[new_key] = {}
+            end
+
+            h = h[new_key]
+            parts = rest
+          end
+        end
+
+        new_hash
+
+      end
+
     end
   end
 end
